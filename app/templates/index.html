@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PolicyPulse AI</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --bg2: #111827;
+            --card: rgba(255,255,255,0.08);
+            --border: rgba(255,255,255,0.12);
+            --text: #f8fafc;
+            --muted: #cbd5e1;
+            --accent: #38bdf8;
+            --accent2: #14b8a6;
+            --good: #22c55e;
+            --bad: #ef4444;
+            --neutral: #f59e0b;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, var(--bg), var(--bg2));
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        .wrap {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px 20px 80px;
+        }
+
+        h1 {
+            font-size: 2.4rem;
+            margin-bottom: 8px;
+        }
+
+        p.lead {
+            color: var(--muted);
+            margin-bottom: 28px;
+            max-width: 850px;
+        }
+
+        .meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 24px;
+        }
+
+        .meta span {
+            display: inline-block;
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-size: 0.9rem;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--border);
+            color: var(--muted);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 24px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 22px;
+            backdrop-filter: blur(10px);
+        }
+
+        label {
+            display: block;
+            margin: 14px 0 8px;
+            font-weight: bold;
+        }
+
+        input, textarea, button {
+            width: 100%;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            padding: 12px 14px;
+            font-size: 1rem;
+        }
+
+        textarea, input {
+            background: rgba(255,255,255,0.06);
+            color: white;
+        }
+
+        textarea {
+            min-height: 180px;
+            resize: vertical;
+        }
+
+        button {
+            margin-top: 18px;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            color: #001018;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+        }
+
+        .result-box {
+            white-space: pre-wrap;
+            line-height: 1.6;
+            color: var(--muted);
+        }
+
+        .pill {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.9rem;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--border);
+        }
+
+        .positive { color: var(--good); }
+        .negative { color: var(--bad); }
+        .neutral { color: var(--neutral); }
+
+        .footer-note {
+            margin-top: 16px;
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        hr {
+            border-color: rgba(255,255,255,0.12);
+            margin: 18px 0;
+        }
+
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <h1>PolicyPulse AI</h1>
+        <p class="lead">
+            Multi-agent public sentiment intelligence demo powered by FastAPI, Cloud Run, and BigQuery.
+        </p>
+
+        <div class="meta">
+            <span>Service: {{ service }}</span>
+            <span>Version: {{ version }}</span>
+            <span>Project: {{ project_id }}</span>
+            <span>Dataset: {{ dataset }}</span>
+            <span>Table: {{ table }}</span>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h2>Analyze sentiment</h2>
+
+                <label for="query">Question</label>
+                <input id="query" value="What do people think about the new transport subsidy?" />
+
+                <label for="region">Region</label>
+                <input id="region" value="Victoria" />
+
+                <label for="policy">Policy name</label>
+                <input id="policy" value="Transport Subsidy" />
+
+                <label for="content">Public feedback records (one per line)</label>
+                <textarea id="content">The subsidy is helpful and affordable for families.
+The process is still confusing and the announcement was unclear.
+Public transport is cheaper now, but delays are still frustrating.</textarea>
+
+                <button onclick="runAnalysis()">Run analysis</button>
+                <div class="footer-note">Each line is treated as one feedback record.</div>
+            </div>
+
+            <div class="card">
+                <h2>Result</h2>
+                <div id="status" class="result-box">Waiting for analysis...</div>
+                <hr />
+                <div id="output"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function runAnalysis() {
+            const query = document.getElementById("query").value.trim();
+            const region = document.getElementById("region").value.trim();
+            const policy = document.getElementById("policy").value.trim();
+            const content = document.getElementById("content").value
+                .split("\n")
+                .map(x => x.trim())
+                .filter(Boolean);
+
+            const records = content.map(line => ({
+                source_type: "manual_input",
+                content: line,
+                region: region || null,
+                policy_name: policy || null
+            }));
+
+            document.getElementById("status").innerText = "Analyzing...";
+            document.getElementById("output").innerHTML = "";
+
+            try {
+                const res = await fetch("/analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ query, records })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    document.getElementById("status").innerText = "Request failed.";
+                    document.getElementById("output").innerHTML =
+                        "<div class='pill negative'>HTTP " + res.status + "</div><pre class='result-box'>" +
+                        JSON.stringify(data, null, 2) + "</pre>";
+                    return;
+                }
+
+                const result = data.result || {};
+                const storage = data.storage || {};
+                const sentiment = result.sentiment || "unknown";
+                const sentimentClass =
+                    sentiment === "positive" ? "positive" :
+                    sentiment === "negative" ? "negative" : "neutral";
+
+                document.getElementById("status").innerHTML =
+                    "Overall sentiment: <strong class='" + sentimentClass + "'>" + sentiment + "</strong>";
+
+                document.getElementById("output").innerHTML = `
+                    <div style="margin-bottom: 14px;">
+                        ${(result.themes || []).map(t => `<span class="pill">${t}</span>`).join("")}
+                    </div>
+                    <div class="result-box"><strong>Summary:</strong><br>${result.summary || "-"}</div>
+                    <div class="result-box" style="margin-top:14px;"><strong>Recommendation:</strong><br>${result.recommendation || "-"}</div>
+                    <div class="result-box" style="margin-top:14px;"><strong>Storage status:</strong><br>${JSON.stringify(storage, null, 2)}</div>
+                `;
+            } catch (err) {
+                document.getElementById("status").innerText = "Unexpected error.";
+                document.getElementById("output").innerHTML =
+                    "<pre class='result-box'>" + err + "</pre>";
+            }
+        }
+    </script>
+</body>
+</html>
